@@ -32,6 +32,31 @@ func ParseWithComments(input string) (v interface{}, comments []Comment, err err
 	return ParseComments(input)
 }
 
+// Token is a single lexical token captured during parsing via ParseTokens.
+// Label is acorn's token-type label (e.g. "name", "num", "string", "eof", "(",
+// "==", ...; matching acorn token.type.label). Value is the raw token value
+// (identifier name, numeric value, string value, or nil for punctuators).
+// Start/End are 0-based byte offsets.
+type Token struct {
+	Label string
+	Value interface{}
+	Start int
+	End   int
+}
+
+// ParseTokens parses source (as a module, latest ECMAScript) and also returns
+// every token, in source order. This is the acorn-go analogue of acorn's
+// onToken (espree's tokenizer/tokens support).
+func ParseTokens(input string) (v interface{}, tokens []Token, err error) {
+	p := newBaseParser(input)
+	p.collectTokens = true
+	v, err = p.run()
+	if err != nil {
+		return nil, nil, err
+	}
+	return v, p.tokens, nil
+}
+
 // newBaseParser builds the shared parser state (extracted from Parse).
 func newBaseParser(input string) *Parser {
 	p := &Parser{

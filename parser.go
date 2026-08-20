@@ -97,6 +97,10 @@ type Parser struct {
 	// optional comment collection (espree/onComment support)
 	collectComments bool
 	comments        []Comment
+
+	// optional token collection (espree/onToken support)
+	collectTokens bool
+	tokens        []Token
 }
 
 type labelInfo struct {
@@ -323,6 +327,14 @@ func (p *Parser) finishToken(typ tokenType, val interface{}) {
 	p.typ = typ
 	p.value = val
 	p.updateContext(prevType)
+	if p.collectTokens {
+		// The Go tokenizer can finish eof twice (a lookahead artifact); acorn
+		// fires onToken(eof) once. Emit eof once.
+		if typ == tEOF && len(p.tokens) > 0 && p.tokens[len(p.tokens)-1].Label == "eof" {
+			return
+		}
+		p.tokens = append(p.tokens, Token{Label: ttTable[typ].label, Value: val, Start: p.start, End: p.end})
+	}
 }
 
 func (p *Parser) finishOp(typ tokenType, size int) {
