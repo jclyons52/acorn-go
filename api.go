@@ -9,37 +9,7 @@ import "encoding/json"
 // character offsets (byte offsets into input, which equal JS code-unit
 // offsets for ASCII input).
 func Parse(input string) (v interface{}, err error) {
-	p := &Parser{
-		input:            input,
-		pos:              0,
-		typ:              tEOF,
-		start:            0,
-		end:              0,
-		lastTokStart:     0,
-		lastTokEnd:       0,
-		context:          []*tokContext{ctxBStat},
-		exprAllowed:      true,
-		inModule:         true, // sourceType: 'module'
-		strict:           true, // module code is strict
-		labels:           []labelInfo{},
-		potentialArrowAt: -1,
-	}
-	p.enterScope(scopeTop)
-
-	defer func() {
-		if r := recover(); r != nil {
-			if e, ok := r.(*SyntaxError_); ok {
-				err = &ParseError{Msg: e.msg, Pos: e.pos}
-				v = nil
-				return
-			}
-			panic(r)
-		}
-	}()
-
-	p.nextToken()
-	prog := p.startNode()
-	return p.parseTopLevel(prog), nil
+	return newBaseParser(input).run()
 }
 
 // ParseError is returned when the source cannot be parsed.

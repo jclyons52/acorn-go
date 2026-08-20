@@ -93,6 +93,10 @@ type Parser struct {
 
 	potentialArrowAt         int
 	potentialArrowInForAwait bool
+
+	// optional comment collection (espree/onComment support)
+	collectComments bool
+	comments        []Comment
 }
 
 type labelInfo struct {
@@ -375,17 +379,21 @@ func (p *Parser) skipBlockComment() {
 		p.raise(p.pos-2, "Unterminated comment")
 	}
 	p.pos = p.pos + 2 + end + 2
-	_ = start
+	if p.collectComments {
+		p.comments = append(p.comments, Comment{Block: true, Text: p.input[start+2 : p.pos-2], Start: start, End: p.pos})
+	}
 }
 
 func (p *Parser) skipLineComment(startSkip int) {
 	start := p.pos
-	_ = start
 	ch := p.charCodeAt(p.pos + startSkip)
 	p.pos += startSkip
 	for p.pos < len(p.input) && !isNewLineCode(ch) {
 		ch = p.charCodeAt(p.pos + 1)
 		p.pos++
+	}
+	if p.collectComments {
+		p.comments = append(p.comments, Comment{Block: false, Text: p.input[start+startSkip : p.pos], Start: start, End: p.pos})
 	}
 }
 
