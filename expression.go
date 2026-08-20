@@ -480,12 +480,75 @@ func (p *Parser) parseExprAtom(ref *destructuringErrors, forInit bool, forNew bo
 		return p.parseClass(p.startNode(), 0)
 	case tNew:
 		return p.parseNew()
+	case tImport:
+		return p.parseExprImport(forNew)
 	case tBackQuote:
 		return p.parseTemplate(false)
 	default:
 		p.unexpected(-1)
 		return nil
 	}
+}
+
+// parseExprImport handles the `import` keyword in expression position:
+// dynamic `import(...)` (ImportExpression) or the `import.meta` meta property
+// (MetaProperty). Mirrors acorn 8.x parseExprImport.
+func (p *Parser) parseExprImport(forNew bool) node {
+	pnode := p.startNode()
+	if p.containsEsc {
+		p.raiseRecoverable(p.start, "Escape sequence in keyword import")
+	}
+	p.next(false)
+	if p.typ == tParenL && !forNew {
+		return p.parseDynamicImport(pnode)
+	} else if p.typ == tDot {
+		meta := p.startNodeAt(pnode["start"].(int))
+		meta["name"] = "import"
+		pnode["meta"] = p.finishNode(meta, "Identifier")
+		return p.parseImportMeta(pnode)
+	}
+	p.unexpected(-1)
+	return nil
+}
+
+// parseDynamicImport parses `import(source)` (and the ECMAScript >=16
+// optional second `options` argument) after the `(` has been selected.
+// acorn's ecmaVersion:"latest" resolves to >= 16, so node.options is always
+// set (null when the paren closes immediately).
+func (p *Parser) parseDynamicImport(pnode node) node {
+	p.next(false) // skip '('
+	pnode["source"] = p.parseMaybeAssign(false, nil)
+	if !p.eat(tParenR) {
+		p.expect(tComma)
+		if !p.afterTrailingComma(tParenR, false) {
+			pnode["options"] = p.parseMaybeAssign(false, nil)
+			if !p.eat(tParenR) {
+				p.expect(tComma)
+				if !p.afterTrailingComma(tParenR, false) {
+					p.unexpected(-1)
+				}
+			}
+		} else {
+			pnode["options"] = nil
+		}
+	} else {
+		pnode["options"] = nil
+	}
+	return p.finishNode(pnode, "ImportExpression")
+}
+
+// parseImportMeta parses `import.meta` after the meta Identifier is set.
+func (p *Parser) parseImportMeta(pnode node) node {
+	p.next(false) // skip '.'
+	containsEsc := p.containsEsc
+	pnode["property"] = p.parseIdent(true)
+	if pnode["property"].(node)["name"] != "meta" {
+		p.raiseRecoverable(pnode["property"].(node)["start"].(int), "The only valid meta property for import is 'import.meta'")
+	}
+	if containsEsc {
+		p.raiseRecoverable(pnode["start"].(int), "'import.meta' must not contain escaped characters")
+	}
+	return p.finishNode(pnode, "MetaProperty")
 }
 
 func (p *Parser) overrideContext(ctx *tokContext) {

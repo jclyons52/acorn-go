@@ -81,6 +81,13 @@ func buildCorpus() map[string]string {
 		"export_reexport":   `export { y as z } from "m";`,
 		"export_all":        `export * from "m";`,
 		"export_var":        `export const k = 1; export function gd() {}`,
+		// dynamic import / import.meta (acorn 8 ImportExpression + MetaProperty)
+		"import_dynamic":      `const m = import("mod");`,
+		"import_dynamic_tpl":  "const m = import(`./${x}`);",
+		"import_dynamic_stmt": `import("mod"); other();`,
+		"import_meta":         `const u = import.meta.url;`,
+		"import_meta_member":  `import.meta.url;`,
+		"import_dynamic_expr": `const f = (p) => import(p).then(m => m.default);`,
 		// misc
 		"directive":     `"use strict"; foo();`,
 		"destructuring": `var {a, b: c} = obj; var [d, e] = arr; function f({x}, [y]) {}`,

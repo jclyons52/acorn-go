@@ -57,6 +57,20 @@ func ParseTokens(input string) (v interface{}, tokens []Token, err error) {
 	return v, p.tokens, nil
 }
 
+// ParseAll parses source and captures both comments and tokens in a single
+// pass (the acorn-go analogue of acorn's onComment + onToken fired together,
+// as espree does). Returns the AST, comments, tokens, and any error.
+func ParseAll(input string) (v interface{}, comments []Comment, tokens []Token, err error) {
+	p := newBaseParser(input)
+	p.collectComments = true
+	p.collectTokens = true
+	v, err = p.run()
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	return v, p.comments, p.tokens, nil
+}
+
 // newBaseParser builds the shared parser state (extracted from Parse).
 func newBaseParser(input string) *Parser {
 	p := &Parser{

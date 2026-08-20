@@ -276,6 +276,14 @@ func (p *Parser) parseStatement(context string, topLevel bool, exports map[strin
 	case tSemi:
 		return p.parseEmptyStatement(pnode)
 	case tExport, tImport:
+		// ecmaVersion > 10 (i.e. latest): `import(...)` and `import.meta` in
+		// statement position are expressions, not import declarations
+		// (acorn: next char '(' or '.' -> parseExpressionStatement).
+		if starttype == tImport {
+			if next := p.nextSignificantChar(); next < len(p.input) && (p.input[next] == '(' || p.input[next] == '.') {
+				return p.parseExpressionStatement(pnode, p.parseExpression(false, nil))
+			}
+		}
 		if context != "" {
 			p.raise(p.start, "'import' and 'export' may only appear at the top level")
 		}

@@ -384,6 +384,27 @@ func isNonASCIIWhitespace(ch int) bool {
 	return false
 }
 
+// nextSignificantChar returns the index of the next non-whitespace char at or
+// after p.pos, without mutating parser state (acorn's skipWhiteSpace lookahead).
+func (p *Parser) nextSignificantChar() int {
+	i := p.pos
+	in := p.input
+	for i < len(in) {
+		ch := int(in[i])
+		switch {
+		case ch == ' ' || ch == '\t' || ch == '\v' || ch == '\f' || ch == '\n' ||
+			ch == '\r' || ch == 0xa0 || ch == 0xfeff || ch == 0x2028 || ch == 0x2029:
+			i++
+		case ch > 127 && (ch == 0x1680 || ch == 0x202f || ch == 0x205f || ch == 0x3000 ||
+			(ch >= 0x2000 && ch <= 0x200a)):
+			i++
+		default:
+			return i
+		}
+	}
+	return i
+}
+
 func (p *Parser) skipBlockComment() {
 	start := p.pos
 	end := strings.Index(p.input[p.pos+2:], "*/")
