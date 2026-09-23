@@ -343,19 +343,53 @@ func (p *Parser) finishOp(typ tokenType, size int) {
 	p.finishToken(typ, str)
 }
 
+// runeWidthAt returns the UTF-8 width (1-4 bytes) of the code point at i.
+func (p *Parser) runeWidthAt(i int) int {
+	if i < 0 || i >= len(p.input) {
+		return 0
+	}
+	if p.input[i] < 0x80 {
+		return 1
+	}
+	if _, w := decodeRuneInString(p.input[i:]); w > 0 {
+		return w
+	}
+	return 1
+}
+
+// whitespaceWidthAt reports the width of the JS whitespace code point at i, or
+// 0 when the code point there is not whitespace. Iteration over the input must
+// advance by this width rather than by one byte: JS positions are UTF-16 code
+// units, so a Go byte walk lands inside multi-byte sequences (U+00A0 is 2
+// bytes, U+3000 is 3) and the tokenizer then sees a mangled character.
+func (p *Parser) whitespaceWidthAt(i int) int {
+	if i < 0 || i >= len(p.input) {
+		return 0
+	}
+	ch := p.charCodeAt(i)
+	switch ch {
+	case 9, 10, 11, 12, 13, 32, 160, 8232, 8233:
+		return p.runeWidthAt(i)
+	}
+	if ch >= 5760 && isNonASCIIWhitespace(ch) {
+		return p.runeWidthAt(i)
+	}
+	return 0
+}
+
 func (p *Parser) skipSpace() {
 	for p.pos < len(p.input) {
 		ch := p.charCodeAt(p.pos)
 		switch ch {
 		case 32, 160:
-			p.pos++
+			p.pos += p.runeWidthAt(p.pos)
 		case 13:
 			if p.charCodeAt(p.pos+1) == 10 {
 				p.pos++
 			}
 			fallthrough
 		case 10, 8232, 8233:
-			p.pos++
+			p.pos += p.runeWidthAt(p.pos)
 		case 47: // '/'
 			next := p.charCodeAt(p.pos + 1)
 			if next == 42 { // '*'
@@ -367,7 +401,7 @@ func (p *Parser) skipSpace() {
 			}
 		default:
 			if (ch > 8 && ch < 14) || (ch >= 5760 && isNonASCIIWhitespace(ch)) {
-				p.pos++
+				p.pos += p.runeWidthAt(p.pos)
 			} else {
 				return
 			}
@@ -388,19 +422,12 @@ func isNonASCIIWhitespace(ch int) bool {
 // after p.pos, without mutating parser state (acorn's skipWhiteSpace lookahead).
 func (p *Parser) nextSignificantChar() int {
 	i := p.pos
-	in := p.input
-	for i < len(in) {
-		ch := int(in[i])
-		switch {
-		case ch == ' ' || ch == '\t' || ch == '\v' || ch == '\f' || ch == '\n' ||
-			ch == '\r' || ch == 0xa0 || ch == 0xfeff || ch == 0x2028 || ch == 0x2029:
-			i++
-		case ch > 127 && (ch == 0x1680 || ch == 0x202f || ch == 0x205f || ch == 0x3000 ||
-			(ch >= 0x2000 && ch <= 0x200a)):
-			i++
-		default:
+	for i < len(p.input) {
+		w := p.whitespaceWidthAt(i)
+		if w == 0 {
 			return i
 		}
+		i += w
 	}
 	return i
 }

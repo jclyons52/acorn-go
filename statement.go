@@ -121,12 +121,11 @@ func (p *Parser) isLet(context string) bool {
 	}
 	next := p.pos
 	for next < len(p.input) {
-		c := p.input[next]
-		if c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == 0x0b || c == 0x0c || c == 0xa0 {
-			next++
+		if w := p.whitespaceWidthAt(next); w > 0 {
+			next += w
 			continue
 		}
-		if c == '/' {
+		if p.input[next] == '/' {
 			next = p.skipWSFrom(next)
 			continue
 		}
@@ -164,12 +163,11 @@ func isInOrInstanceof(w string) bool {
 
 func (p *Parser) skipWSFrom(i int) int {
 	for i < len(p.input) {
-		c := p.input[i]
-		if c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == 0x0b || c == 0x0c || c == 0xa0 {
-			i++
+		if w := p.whitespaceWidthAt(i); w > 0 {
+			i += w
 			continue
 		}
-		if c == '/' && i+1 < len(p.input) {
+		if p.input[i] == '/' && i+1 < len(p.input) {
 			if p.input[i+1] == '/' {
 				for i < len(p.input) && p.input[i] != '\n' {
 					i++
@@ -196,12 +194,11 @@ func (p *Parser) isAsyncFunction() bool {
 	}
 	next := p.pos
 	for next < len(p.input) {
-		c := p.input[next]
-		if c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == 0x0b || c == 0x0c || c == 0xa0 {
-			next++
+		if w := p.whitespaceWidthAt(next); w > 0 {
+			next += w
 			continue
 		}
-		if c == '/' {
+		if p.input[next] == '/' {
 			next = p.skipWSFrom(next)
 			continue
 		}

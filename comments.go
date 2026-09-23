@@ -108,3 +108,33 @@ func (p *Parser) run() (v interface{}, err error) {
 	prog := p.startNode()
 	return p.parseTopLevel(prog), nil
 }
+
+// LexAt lexes the single token that starts at (or after) offset and returns its
+// span, or an error if the tokenizer rejects the input there.
+//
+// This exists for espree's overridden unexpected(): espree re-tokenizes at the
+// failure position and appends the offending token's source text to the
+// message ("Unexpected token ;"), which raw acorn does not do. Re-tokenizing
+// works because the failure position is always a token boundary acorn had
+// already scanned.
+func LexAt(input string, offset int) (start, end int, err error) {
+	if offset < 0 {
+		offset = 0
+	}
+	if offset > len(input) {
+		offset = len(input)
+	}
+	p := newBaseParser(input)
+	p.pos = offset
+	defer func() {
+		if r := recover(); r != nil {
+			if e, ok := r.(*SyntaxError_); ok {
+				start, end, err = offset, offset, &ParseError{Msg: e.msg, Pos: e.pos}
+				return
+			}
+			panic(r)
+		}
+	}()
+	p.nextToken()
+	return p.start, p.end, nil
+}
