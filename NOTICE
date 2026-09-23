@@ -1,0 +1,10 @@
+acorn-go
+========
+
+A Go port of acorn (acorn 8.15).
+
+The upstream package is vendored under the parity oracle directory
+(`oracle/` or `original/`) and is used at test time to check this port's
+behaviour. Its licence is reproduced in LICENSE. Only the Go code in this
+repository is the port work; the upstream package remains the work of its
+own authors.

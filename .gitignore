@@ -1,0 +1,14 @@
+# Go build output
+/bin/
+/dist/
+*.test
+*.out
+
+# npm oracle (installed locally, never vendored into git)
+node_modules/
+package-lock.json
+
+# editors / OS
+.DS_Store
+.idea/
+.vscode/
