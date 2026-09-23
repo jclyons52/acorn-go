@@ -78,8 +78,9 @@ type Parser struct {
 	exprAllowed bool
 	containsEsc bool
 
-	inModule bool
-	strict   bool
+	inModule   bool
+	sourceType string
+	strict     bool
 
 	labels           []labelInfo
 	scopeStack       []*scope

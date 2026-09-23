@@ -103,7 +103,7 @@ func (p *Parser) parseTopLevel(pnode node) node {
 	return pnode
 }
 
-func (p *Parser) optionsSourceType() string { return "module" }
+func (p *Parser) optionsSourceType() string { return p.sourceType }
 
 func (p *Parser) nodeType(n node, typ string) node {
 	n["type"] = typ

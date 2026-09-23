@@ -945,15 +945,22 @@ func (p *Parser) parseFunctionBody(pnode node, isArrowFunction, isMethod, forIni
 	} else {
 		nonSimple := !p.isSimpleParamList(pnode["params"].([]node))
 		if !oldStrict || nonSimple {
-			// strict directive detection skipped for module context (already strict)
-			_ = nonSimple
+			useStrict = p.strictDirective(p.end)
+			// A strict function may not have a non-simple parameter list.
+			if useStrict && nonSimple {
+				p.raiseRecoverable(pnode["start"].(int),
+					"Illegal 'use strict' directive in function with non-simple parameter list")
+			}
 		}
 		oldLabels := p.labels
 		p.labels = []labelInfo{}
 		if useStrict {
 			p.strict = true
 		}
-		p.checkParams(pnode, true)
+		// Duplicate parameter names are only allowed in a sloppy-mode function
+		// with a simple parameter list.
+		p.checkParams(pnode, !oldStrict && !useStrict && !isArrowFunction && !isMethod &&
+			p.isSimpleParamList(pnode["params"].([]node)))
 		if p.strict && pnode["id"] != nil {
 			p.checkLValSimple(pnode["id"].(node), bindOutside, nil)
 		}
@@ -966,6 +973,11 @@ func (p *Parser) parseFunctionBody(pnode node, isArrowFunction, isMethod, forIni
 		for p.typ != tBraceR {
 			stmt := p.parseStatement("", false, nil)
 			body["body"] = append(body["body"].([]node), stmt)
+		}
+		// parseBlock's exitStrict: strictness introduced by a directive ends
+		// with the block, before the closing brace is consumed.
+		if useStrict && !oldStrict {
+			p.strict = false
 		}
 		p.next(false)
 		pnode["body"] = p.finishNode(body, "BlockStatement")
@@ -1043,12 +1055,22 @@ func (p *Parser) keywords2(name string) bool {
 	return ok
 }
 
+// isReservedStrict is acorn's reservedWordsStrict: reservedWords[6] plus the
+// strict-mode extras. `eval` and `arguments` are NOT in it — they are bind-only
+// (see isReservedStrictBind), which is why `arguments.callee` parses fine in
+// strict mode.
 func isReservedStrict(name string) bool {
 	switch name {
-	case "implements", "interface", "let", "package", "private", "protected", "public", "static", "yield", "eval", "arguments":
+	case "enum", "implements", "interface", "let", "package", "private", "protected", "public", "static", "yield":
 		return true
 	}
 	return false
+}
+
+// isReservedStrictBind is acorn's reservedWordsStrictBind extras: names that may
+// not be bound (or assigned to) in strict mode.
+func isReservedStrictBind(name string) bool {
+	return name == "eval" || name == "arguments"
 }
 
 func (p *Parser) parseIdent(liberal bool) node {
@@ -1270,8 +1292,24 @@ func (p *Parser) parseMaybeDefault(startPos int, left node) node {
 func (p *Parser) checkLValSimple(expr node, bindingType int, checkClashes map[string]bool) {
 	switch expr["type"] {
 	case "Identifier":
+		name := expr["name"].(string)
+		if p.strict && isReservedStrictBind(name) {
+			verb := "Assigning to "
+			if bindingType != bindNone {
+				verb = "Binding "
+			}
+			p.raiseRecoverable(expr["start"].(int), verb+name+" in strict mode")
+		}
 		if bindingType != bindNone {
-			// name declaration tracking not needed for AST-only parity
+			if bindingType == bindLexical && name == "let" {
+				p.raiseRecoverable(expr["start"].(int), "let is disallowed as a lexically bound name")
+			}
+			if checkClashes != nil {
+				if checkClashes[name] {
+					p.raiseRecoverable(expr["start"].(int), "Argument name clash")
+				}
+				checkClashes[name] = true
+			}
 		}
 	case "ChainExpression":
 		p.raiseRecoverable(expr["start"].(int), "Optional chaining cannot appear in left-hand side")

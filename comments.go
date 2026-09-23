@@ -71,8 +71,39 @@ func ParseAll(input string) (v interface{}, comments []Comment, tokens []Token, 
 	return v, p.comments, p.tokens, nil
 }
 
+// ParseOptions are the acorn options this port honours. acorn's own option bag
+// is larger; what the ESLint chain needs is sourceType, which decides module
+// versus sloppy script semantics (and therefore whether import/export, `with`,
+// octal literals and duplicate parameters are legal).
+type ParseOptions struct {
+	// SourceType is "module" (the default) or "script".
+	SourceType string
+}
+
+// ParseAllWithOptions is ParseAll with acorn options.
+func ParseAllWithOptions(input string, opts ParseOptions) (v interface{}, comments []Comment, tokens []Token, err error) {
+	p := newParserWithOptions(input, opts)
+	p.collectComments = true
+	p.collectTokens = true
+	v, err = p.run()
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	return v, p.comments, p.tokens, nil
+}
+
 // newBaseParser builds the shared parser state (extracted from Parse).
 func newBaseParser(input string) *Parser {
+	return newParserWithOptions(input, ParseOptions{SourceType: "module"})
+}
+
+// newParserWithOptions builds the parser state for a sourceType.
+func newParserWithOptions(input string, opts ParseOptions) *Parser {
+	sourceType := opts.SourceType
+	if sourceType != "script" {
+		sourceType = "module"
+	}
+	inModule := sourceType == "module"
 	p := &Parser{
 		input:            input,
 		pos:              0,
@@ -83,11 +114,14 @@ func newBaseParser(input string) *Parser {
 		lastTokEnd:       0,
 		context:          []*tokContext{ctxBStat},
 		exprAllowed:      true,
-		inModule:         true, // sourceType: 'module'
-		strict:           true, // module code is strict
+		sourceType:       sourceType,
+		inModule:         inModule,
 		labels:           []labelInfo{},
 		potentialArrowAt: -1,
 	}
+	// acorn: this.strict = this.inModule || options.strict === true ||
+	// this.strictDirective(this.pos)
+	p.strict = inModule || p.strictDirective(0)
 	p.enterScope(scopeTop)
 	return p
 }
