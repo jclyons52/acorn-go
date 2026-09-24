@@ -99,6 +99,14 @@ type Parser struct {
 	collectComments bool
 	comments        []Comment
 
+	// hashBang records that an allowed `#!` line must be skipped before the first
+	// token (see newParserWithOptions/run).
+	hashBang bool
+
+	// allowReturnOutsideFunction mirrors acorn's option (espree turns it on for
+	// CommonJS / ecmaFeatures.globalReturn sources).
+	allowReturnOutsideFunction bool
+
 	// optional token collection (espree/onToken support)
 	collectTokens bool
 	tokens        []Token
@@ -1215,8 +1223,11 @@ func (p *Parser) readEscapedChar(inTemplate bool) string {
 		return string(rune(ch))
 	default:
 		if ch >= 48 && ch <= 55 {
-			octalStr := p.input[p.pos-1 : min3(p.pos+2, 0)]
-			// take up to 3 octal digits
+			// acorn: input.substr(this.pos - 1, 3).match(/^[0-7]+/)[0], i.e. up to
+			// three octal digits, clipped by the end of the input. (This used to
+			// slice [pos-1:min3(pos+2, 0)] — an end bound of 0 — which panicked on
+			// every octal escape in sloppy code, e.g. `"\1"` in a replacement
+			// string; the value is recomputed below anyway.)
 			j := 0
 			for j < 3 && p.pos-1+j < len(p.input) {
 				c := p.input[p.pos-1+j]
@@ -1225,7 +1236,7 @@ func (p *Parser) readEscapedChar(inTemplate bool) string {
 				}
 				j++
 			}
-			octalStr = p.input[p.pos-1 : p.pos-1+j]
+			octalStr := p.input[p.pos-1 : p.pos-1+j]
 			octal, _ := strconv.ParseInt(octalStr, 8, 64)
 			if octal > 255 {
 				octalStr = octalStr[:len(octalStr)-1]
@@ -1234,7 +1245,14 @@ func (p *Parser) readEscapedChar(inTemplate bool) string {
 			p.pos += len(octalStr) - 1
 			ch = p.charCodeAt(p.pos)
 			if (octalStr != "0" || ch == 56 || ch == 57) && (p.strict || inTemplate) {
-				// error; but valid corpus won't reach
+				// acorn raises at `this.pos - 1 - octalStr.length` (the backslash,
+				// not the digit) and names the template case differently; getting
+				// this wrong shifts the reported column by one.
+				msg := "Octal literal in strict mode"
+				if inTemplate {
+					msg = "Octal literal in template string"
+				}
+				p.invalidStringToken(p.pos-1-len(octalStr), msg)
 			}
 			return string(rune(octal))
 		}
@@ -1243,13 +1261,6 @@ func (p *Parser) readEscapedChar(inTemplate bool) string {
 		}
 		return string(rune(ch))
 	}
-}
-
-func min3(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }
 
 func (p *Parser) readWord1() string {

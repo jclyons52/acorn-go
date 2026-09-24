@@ -1,5 +1,7 @@
 package acorn
 
+import "strings"
+
 // Comment is a line or block comment encountered while parsing, captured when
 // ParseWithComments or ParseComments is used. This mirrors acorn's onComment
 // callback (needed by espree for comment attachment).
@@ -78,6 +80,27 @@ func ParseAll(input string) (v interface{}, comments []Comment, tokens []Token, 
 type ParseOptions struct {
 	// SourceType is "module" (the default) or "script".
 	SourceType string
+	// AllowHashBang mirrors acorn's option: a `#!` line at the very start of the
+	// file is skipped as a line comment. acorn defaults it to `ecmaVersion >= 14`
+	// (ES2023) and this port targets the latest grammar, so nil means enabled.
+	// ESLint never depends on it — the Linter rewrites the shebang into a line
+	// comment before parsing — but a direct acorn-go/espree-go caller parsing an
+	// npm bin script does.
+	AllowHashBang *bool
+	// AllowReturnOutsideFunction mirrors acorn's option of the same name: a
+	// top-level `return` is accepted. espree sets it when
+	// parserOptions.ecmaFeatures.globalReturn is on (which `env: node` turns on),
+	// i.e. for CommonJS-style sources.
+	AllowReturnOutsideFunction bool
+}
+
+// hashBangAllowed resolves acorn's `allowHashBang == null ? ecmaVersion >= 14 :
+// allowHashBang` default for this port (latest grammar ⇒ enabled).
+func hashBangAllowed(opts ParseOptions) bool {
+	if opts.AllowHashBang != nil {
+		return *opts.AllowHashBang
+	}
+	return true
 }
 
 // ParseAllWithOptions is ParseAll with acorn options.
@@ -122,6 +145,19 @@ func newParserWithOptions(input string, opts ParseOptions) *Parser {
 	// acorn: this.strict = this.inModule || options.strict === true ||
 	// this.strictDirective(this.pos)
 	p.strict = inModule || p.strictDirective(0)
+
+	// acorn, in this order:
+	//   if (this.pos === 0 && options.allowHashBang && this.input.slice(0, 2) === "#!")
+	//     { this.skipLineComment(2); }
+	// The order matters: strictness was decided from offset 0 just above, so acorn
+	// reads `#!...` + `"use strict"` as sloppy code (the directive is no longer at
+	// offset 0). Only a real shebang — at byte 0, after BOM stripping — is skipped.
+	// The skip itself happens in run(), once the comment collector is configured:
+	// acorn fires onComment from inside the constructor because its options bag is
+	// already complete there, while this port enables collection after construction
+	// (ParseAllWithOptions), which would drop the hashbang from the comment stream.
+	p.hashBang = p.pos == 0 && hashBangAllowed(opts) && strings.HasPrefix(input, "#!")
+	p.allowReturnOutsideFunction = opts.AllowReturnOutsideFunction
 	p.enterScope(scopeTop)
 	return p
 }
@@ -138,6 +174,11 @@ func (p *Parser) run() (v interface{}, err error) {
 			panic(r)
 		}
 	}()
+	if p.hashBang {
+		// Same effect as acorn's constructor-time skipLineComment(2), but with the
+		// comment recorded (espree reports it as a "Hashbang" comment).
+		p.skipLineComment(2)
+	}
 	p.nextToken()
 	prog := p.startNode()
 	return p.parseTopLevel(prog), nil

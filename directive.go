@@ -32,8 +32,16 @@ func (p *Parser) strictDirective(start int) bool {
 		if loc == nil {
 			return false
 		}
-		value := p.input[start+loc[2] : start+loc[3]]
-		if value == "" {
+		// Go reports -1 for a capture group that did not participate, so the
+		// group has to be checked before it is sliced: a double-quoted literal
+		// leaves the single-quoted group unmatched (and vice versa), and slicing
+		// by -1 panics. `"use strict";` — the most common directive in shipped
+		// npm code — is exactly that shape.
+		value := ""
+		switch {
+		case loc[2] >= 0:
+			value = p.input[start+loc[2] : start+loc[3]]
+		case loc[4] >= 0:
 			value = p.input[start+loc[4] : start+loc[5]]
 		}
 		if value == "use strict" {

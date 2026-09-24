@@ -458,7 +458,8 @@ func (p *Parser) parseIfStatement(pnode node) node {
 }
 
 func (p *Parser) parseReturnStatement(pnode node) node {
-	if !p.inFunction() {
+	// acorn: !this.inFunction && !this.options.allowReturnOutsideFunction
+	if !p.inFunction() && !p.allowReturnOutsideFunction {
 		p.raise(p.start, "'return' outside of function")
 	}
 	p.next(false)
